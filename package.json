@@ -19,7 +19,7 @@
     "client": "GIT_COMMIT=$(git show --no-patch --format=%h) rollup -c -w",
     "depcheck": "depcheck --ignore-dirs dist,docs --ignores=@types/*,ts-node,concurrently,tsconfig-paths,webpack-cli,@typescript-eslint/*,eslint-plugin-*,$npm_package_name",
     "eslint": "eslint --fix server/ client/ types/ --max-warnings=0 --ext .js,.ts,.tsx",
-    "example": "cd example && GIT_COMMIT=$(git show --no-patch --format=%h) gatsby develop -p 1234",
+    "example": "cd example && GIT_COMMIT=$(git show --no-patch --format=%h) npm run develop",
     "ncu": "ncu",
     "prepublishOnly": "npm run check && npm run build:client",
     "server": "GIT_COMMIT=$(git show --no-patch --format=%h) nodemon",
