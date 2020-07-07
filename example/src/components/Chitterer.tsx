@@ -22,7 +22,8 @@ import { CSSProperties } from "@material-ui/core/styles/withStyles"
 const useStyles = makeStyles(_ => ({
   chitterer: {
     width: "100%",
-    border: "1px solid black",
+    border: "1px solid grey",
+    padding: 8,
   },
   messages: {
     display: "flex",
@@ -62,7 +63,7 @@ export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
   // You can define these right on the element itself, but then they are recreated on every render
   // So using the useCallback hook is slightly more efficient, and maybe a bit clearer
 
-  const [input, setInput] = useState<string>("")
+  const [input, setInput] = useState("")
 
   // We control the value of the input box, so each time it changes we need to update our copy
   const onChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,7 +112,7 @@ export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
       <TextField
         value={input}
         className={classes.input}
-        placeholder="Send Message"
+        placeholder="Send"
         multiline
         onChange={onChange}
         onKeyDown={e => onKeyDown(e, input)}
