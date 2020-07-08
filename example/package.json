@@ -6,7 +6,7 @@
     "clean": "gatsby clean",
     "depcheck": "depcheck --ignore-dirs .cache,public --ignores=ts-node,gatsby-plugin-*,@typescript-eslint/*,eslint-*,gatsby-source-*,gatsby-transformer-*,nodemon",
     "deploy": "gatsby build --prefix-paths && gh-pages -d public",
-    "develop": "gatsby develop",
+    "develop": "gatsby develop -p 1234",
     "eslint": "eslint --fix --max-warnings=0 --ext .js,.ts,.tsx",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\" && prettier-package-json --write",
     "ncu": "ncu",
