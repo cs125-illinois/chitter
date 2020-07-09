@@ -8,7 +8,7 @@ import { PingWS, filterPingPongMessages } from "@cs125/pingpongws"
 import { v4 as uuidv4 } from "uuid"
 import queryString from "query-string"
 
-import { ConnectionQuery, RoomsMessage, RoomID, ChitterMessage } from "../types"
+import { ConnectionQuery, RoomsMessage, RoomID, ChitterMessage, JoinMessage } from "../types"
 
 import { String } from "runtypes"
 const VERSION = String.check(process.env.npm_package_version)
@@ -44,6 +44,8 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, childr
   // Set up the websocket connection
   const connection = useRef<ReconnectingWebSocket | undefined>(undefined)
   useEffect(() => {
+    sessionStorage.setItem("chitter:id", clientID.current)
+
     // useEffect runs after the initial render, and (in this case) any time the server configuration changes
     connection.current?.close()
     const connectionQuery = ConnectionQuery.check({
@@ -73,6 +75,7 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, childr
         // Handle any incoming messages that we could receive from the server.
         const message = JSON.parse(data)
         if (RoomsMessage.guard(message)) {
+          console.log(message.rooms)
           setRooms(message.rooms)
         }
       })
@@ -81,13 +84,12 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, childr
     connection.current.reconnect()
     return (): void => {
       connection.current?.close()
-      connection.current = undefined
     }
   }, [server])
 
   const join = useCallback((room: RoomID) => {
-    console.log(room)
-    // TODO: Finish the join function
+    const joinMessage = JoinMessage.check({ type: "join", roomID: room })
+    connection.current?.send(JSON.stringify(joinMessage))
   }, [])
 
   return <ChitterContext.Provider value={{ connected, rooms, join }}>{children}</ChitterContext.Provider>

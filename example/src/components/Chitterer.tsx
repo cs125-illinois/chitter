@@ -54,10 +54,12 @@ export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
   // So far the callback we register just appends new messages to our array, which seems reasonable
   // but is something we may need to update later
   useEffect(() => {
-    join(room, message => {
-      setMessages(m => m.concat(message))
-    })
-  }, [join, room, setMessages])
+    if (connected) {
+      join(room, message => {
+        setMessages(m => m.concat(message))
+      })
+    }
+  }, [connected, join, room, setMessages])
 
   // Callbacks for our input element below
   // You can define these right on the element itself, but then they are recreated on every render

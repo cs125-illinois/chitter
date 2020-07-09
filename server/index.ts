@@ -8,7 +8,7 @@ import websocket from "koa-easy-ws"
 import WebSocket from "ws"
 import { PongWS, filterPingPongMessages } from "@cs125/pingpongws"
 
-import { ConnectionQuery, Versions, JoinMessage } from "../types"
+import { ConnectionQuery, Versions, JoinMessage, RoomsMessage } from "../types"
 
 import { String } from "runtypes"
 const VERSIONS = {
@@ -30,8 +30,8 @@ type RoomID = string
 // 2. Figure out what rooms a particular websocket has joined
 
 const clientIDtoWebsocket: Record<ClientID, WebSocket> = {}
-const roomToClientIDs: Record<RoomID, ClientID[]> = {}
-const clientIDtoRooms: Record<ClientID, RoomID[]> = {}
+const roomToClientIDs: Record<RoomID, Record<ClientID, boolean>> = {}
+const clientIDtoRooms: Record<ClientID, Record<RoomID, boolean>> = {}
 
 router.get("/", async (ctx) => {
   const connectionQuery = ConnectionQuery.check(ctx.request.query)
@@ -57,16 +57,28 @@ router.get("/", async (ctx) => {
   const ws = PongWS(await ctx.ws())
   // TODO: Update various mappings appropriately
 
+  // We'll expect the client to remember what rooms it wants to join
+  clientIDtoRooms[clientID] = {}
+  clientIDtoWebsocket[clientID] = ws
+
   ws.addEventListener(
     "message",
     filterPingPongMessages(async ({ data }) => {
       // Handle incoming messages here
       const message = JSON.parse(data.toString())
       if (JoinMessage.guard(message)) {
-        // TODO: handle join message by updating client and room mappings
+        const { roomID } = message
+        if (!(roomID in roomToClientIDs)) {
+          roomToClientIDs[roomID] = {}
+        }
+        roomToClientIDs[roomID][clientID] = true
+        clientIDtoRooms[clientID][roomID] = true
+
         // For now, just automatically create the room if it doesn't exist, although we'll
-        // fix this later
-        // Reply with a RoomMessage
+        // revisit this later
+
+        const roomsMessage = RoomsMessage.check({ type: "rooms", rooms: Object.keys(clientIDtoRooms[clientID]) })
+        ws.send(JSON.stringify(roomsMessage))
       } else {
         // As long as the if-else above is exhaustive over all possible client messages,
         // this is a good sanity check
@@ -78,6 +90,13 @@ router.get("/", async (ctx) => {
     try {
       ws.terminate()
     } catch (err) {}
+
+    Object.keys(clientIDtoRooms[clientID]).forEach((room) => {
+      delete roomToClientIDs[room][clientID]
+    })
+    delete clientIDtoRooms[clientID]
+    delete clientIDtoWebsocket[clientID]
+
     // TODO: Update various mappings appropriately
   })
 })
