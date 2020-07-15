@@ -1,1 +1,2 @@
-export { ChitterProvider, ChitterContext, useChitter, ChitterMessage, RoomID } from "./client"
+export { ChitterContext, ChitterProvider, ChitterProviderProps, useChitter } from "./client"
+export { RoomID, ChitterMessage, SendChitterMessage, ReceiveChitterMessage } from "./types"

@@ -12,12 +12,15 @@
     "client/dist/**/*"
   ],
   "scripts": {
+    "backend": "npm run backend:up ; npm run backend:down",
+    "backend:down": "docker-compose --env-file example/.env.development -p $npm_package_name down",
+    "backend:up": "docker-compose --env-file example/.env.development -p $npm_package_name up",
     "build": "npm run build:client && npm run build:server",
     "build:client": "rm -rf client/dist && cross-env GIT_COMMIT=$(git show --no-patch --format=%h) rollup -c && cp index.d.ts client/dist/ && rm -rf client/dist/example",
     "build:server": "rm -rf server/dist && cross-env GIT_COMMIT=$(git show --no-patch --format=%h) webpack",
     "check": "npm run eslint && npm run tsc && npm run prettier && npm run depcheck",
     "client": "cross-env GIT_COMMIT=$(git show --no-patch --format=%h) rollup -c -w",
-    "depcheck": "depcheck --ignore-dirs dist,docs --ignores=@types/*,ts-node,concurrently,tsconfig-paths,webpack-cli,@typescript-eslint/*,eslint-plugin-*,$npm_package_name",
+    "depcheck": "depcheck --ignore-dirs dist,docs --ignores=@types/*,ts-node,concurrently,tsconfig-paths,webpack-cli,@typescript-eslint/*,eslint-plugin-*,env-cmd,$npm_package_name",
     "eslint": "eslint --fix server/ client/ types/ --max-warnings=0 --ext .js,.ts,.tsx",
     "example": "cd example && cross-env GIT_COMMIT=$(git show --no-patch --format=%h) npm run develop",
     "ncu": "ncu",
@@ -30,10 +33,14 @@
   "types": "client/dist/index.d.ts",
   "dependencies": {
     "@cs125/pingpongws": "^2020.5.0",
+    "@types/mongodb-uri": "^0.9.0",
+    "google-auth-library": "^6.0.5",
     "koa": "^2.13.0",
     "koa-bodyparser": "^4.3.0",
     "koa-easy-ws": "https://github.com/cs125-illinois/koa-easy-ws.git",
     "koa-router": "^9.1.0",
+    "mongodb": "^3.5.9",
+    "mongodb-uri": "^0.9.7",
     "query-string": "^6.13.1",
     "reconnecting-websocket": "^4.4.0",
     "runtypes": "^4.3.0",
@@ -42,14 +49,14 @@
   },
   "peerDependencies": {
     "prop-types": ">=15",
-    "react": ">=16",
-    "react-ace": ">=9"
+    "react": ">=16"
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^2.3.3",
     "@types/koa": "^2.11.3",
     "@types/koa-bodyparser": "^4.3.0",
     "@types/koa-router": "^7.4.1",
+    "@types/mongodb": "^3.5.25",
     "@types/node": "14.0.18",
     "@types/react": "^16.9.41",
     "@types/react-dom": "^16.9.8",
@@ -64,6 +71,7 @@
     "concurrently": "^5.2.0",
     "cross-env": "^7.0.2",
     "depcheck": "^1.0.0",
+    "env-cmd": "^10.1.0",
     "eslint": "^7.4.0",
     "eslint-config-prettier": "^6.11.0",
     "eslint-plugin-prettier": "^3.1.4",
@@ -115,7 +123,7 @@
       "server/index.ts",
       "types/index.ts"
     ],
-    "exec": "ts-node -r tsconfig-paths/register server/index.ts"
+    "exec": "env-cmd -f example/.env.development ts-node -r tsconfig-paths/register server/index.ts"
   },
   "prettier": {
     "semi": false,

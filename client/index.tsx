@@ -2,13 +2,23 @@
 import React, { createContext, useContext, ReactNode, useRef, useEffect, useState, useCallback } from "react"
 import PropTypes from "prop-types"
 
-import ReconnectingWebSocket from "reconnecting-websocket"
+import ReconnectingWebSocket, { Event } from "reconnecting-websocket"
 import { PingWS, filterPingPongMessages } from "@cs125/pingpongws"
+
+import { EventEmitter } from "events"
 
 import { v4 as uuidv4 } from "uuid"
 import queryString from "query-string"
 
-import { ConnectionQuery, RoomsMessage, RoomID, ChitterMessage, JoinMessage } from "../types"
+import {
+  ConnectionQuery,
+  RoomsMessage,
+  RoomID,
+  ChitterMessage,
+  JoinMessage,
+  SendChitterMessage,
+  ReceiveChitterMessage,
+} from "../types"
 
 import { String } from "runtypes"
 const VERSION = String.check(process.env.npm_package_version)
@@ -19,7 +29,13 @@ const COMMIT = String.check(process.env.GIT_COMMIT)
 export interface ChitterContext {
   connected: boolean
   rooms: RoomID[]
-  join: (room: RoomID, onReceive: (message: ChitterMessage) => void) => void
+  join: (requestID: string, room: RoomID, onReceive: ReceiveChitterMessage) => SendChitterMessage
+  leave: (room: RoomID, onReceive: ReceiveChitterMessage) => void
+}
+
+interface RoomRequest {
+  room: RoomID
+  onReceive: ReceiveChitterMessage
 }
 
 // Context provider component that will wrap the entire app.
@@ -27,9 +43,10 @@ export interface ChitterContext {
 // context subscribers to join rooms and send and receive messages
 export interface ChitterProviderProps {
   server: string
+  googleToken: string | undefined
   children: ReactNode
 }
-export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, children }) => {
+export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, googleToken, children }) => {
   // UniqueID that identifies this client. Saved in sessionStorage to be stable across refreshes,
   // but not in localStorage to allow different rooms for each tab
   // Need to make sure that we don't fetch this during SSR...
@@ -41,14 +58,25 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, childr
   const [connected, setConnected] = useState(false)
   const [rooms, setRooms] = useState<RoomID[]>([])
 
-  // Set up the websocket connection
+  const messager = useRef(new EventEmitter())
+
   const connection = useRef<ReconnectingWebSocket | undefined>(undefined)
   useEffect(() => {
     sessionStorage.setItem("chitter:id", clientID.current)
+  }, [])
 
+  // Set up the websocket connection
+  useEffect(() => {
     // useEffect runs after the initial render, and (in this case) any time the server configuration changes
     connection.current?.close()
+
+    // We now require authentication, so simply return if this prop isn't set
+    if (!googleToken) {
+      return
+    }
+
     const connectionQuery = ConnectionQuery.check({
+      googleToken,
       clientID: clientID.current,
       version: VERSION,
       commit: COMMIT,
@@ -75,8 +103,9 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, childr
         // Handle any incoming messages that we could receive from the server.
         const message = JSON.parse(data)
         if (RoomsMessage.guard(message)) {
-          console.log(message.rooms)
           setRooms(message.rooms)
+        } else if (ChitterMessage.guard(message)) {
+          messager.current.emit(message.room, message)
         }
       })
     )
@@ -85,18 +114,38 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, childr
     return (): void => {
       connection.current?.close()
     }
-  }, [server])
+  }, [server, googleToken])
 
-  const join = useCallback((room: RoomID) => {
-    const joinMessage = JoinMessage.check({ type: "join", roomID: room })
-    connection.current?.send(JSON.stringify(joinMessage))
+  const roomRequests = useRef<Record<string, RoomRequest>>({})
+
+  const join = useCallback((requestID: string, room: RoomID, onReceive: ReceiveChitterMessage) => {
+    roomRequests.current[requestID] = { room, onReceive }
+
+    connection.current?.send(JSON.stringify(JoinMessage.check({ type: "join", roomID: room })))
+
+    messager.current.addListener(room, onReceive)
+
+    return (message: ChitterMessage) => {
+      connection.current?.send(JSON.stringify(message))
+    }
   }, [])
 
-  return <ChitterContext.Provider value={{ connected, rooms, join }}>{children}</ChitterContext.Provider>
+  const leave = useCallback((requestID: string) => {
+    if (!roomRequests.current[requestID]) {
+      console.warn(`Ignoring invalid requestID: ${requestID}`)
+      return
+    }
+    const { room, onReceive } = roomRequests.current[requestID]
+    messager.current.removeListener(room, onReceive)
+    delete roomRequests.current[requestID]
+  }, [])
+
+  return <ChitterContext.Provider value={{ connected, rooms, join, leave }}>{children}</ChitterContext.Provider>
 }
 
 ChitterProvider.propTypes = {
   server: PropTypes.string.isRequired,
+  googleToken: PropTypes.string,
   children: PropTypes.node.isRequired,
 }
 
@@ -110,9 +159,12 @@ export const useChitter = (): ChitterContext => {
 export const ChitterContext = createContext<ChitterContext>({
   connected: false,
   rooms: [],
-  join: (): void => {
+  join: () => {
+    throw new Error("ChitterProvider not set")
+  },
+  leave: () => {
     throw new Error("ChitterProvider not set")
   },
 })
 
-export { ChitterMessage, RoomID }
+export { ChitterMessage }

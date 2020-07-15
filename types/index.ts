@@ -7,7 +7,10 @@ import { Record, Static, String, Literal, Array, Union } from "runtypes"
 // the message, and a second that defines the TypeScript type using during development
 // and compilation
 
+// Useful type aliases
 export type RoomID = string
+export type SendChitterMessage = (message: ChitterMessage) => void
+export type ReceiveChitterMessage = (message: ChitterMessage) => void
 
 // Combined versions and commits, assembled on the server
 export const Versions = Record({
@@ -29,6 +32,7 @@ export const ConnectionQuery = Record({
   clientID: String,
   version: String,
   commit: String,
+  googleToken: String,
 })
 export type ConnectionQuery = Static<typeof ConnectionQuery>
 
