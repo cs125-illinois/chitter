@@ -27,6 +27,7 @@ export default ["cjs", "es"].map((format) => ({
       include: "node_modules/**",
       namedExports: {
         runtypes: ["Record", "Partial", "Number", "String", "Array", "Static", "Union"],
+        events: ["EventEmitter"],
       },
     }),
   ],
