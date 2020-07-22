@@ -1,7 +1,6 @@
 import React from "react"
 import PropTypes from "prop-types"
 
-import { OutgoingChitterMessage } from "@cs125/chitter"
 import gravatar from "gravatar"
 import Avatar from "@material-ui/core/Avatar"
 import ReactMarkdown from "react-markdown"
@@ -15,13 +14,14 @@ import { Pre } from "@cs125/gatsby-theme-cs125/src/mdx/Code"
 import { String } from "runtypes"
 import Typography from "@material-ui/core/Typography"
 import { useTheme } from "@material-ui/core/styles"
+import { ChitterMessage } from "../../../client/dist"
 
 const Paragraph: React.FC = ({ children }) => <P style={{ marginBottom: 8, marginTop: 8 }}>{children}</P>
 Paragraph.propTypes = {
   children: PropTypes.node.isRequired,
 }
 const Code: React.FC<{ language?: string }> = ({ language, ...props }) => {
-  return <Ace mode={language || "sh"} {...props} wrapperStyle={{ marginTop: 0, marginBottom: 0 }} />
+  return <Ace mode={language || "sh"} {...props} wrapperStyle={{ marginTop: 0, marginBottom: 8 }} />
 }
 Code.propTypes = {
   language: PropTypes.string,
@@ -49,7 +49,7 @@ const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 export interface MarkdownMessagesProps extends React.HTMLAttributes<HTMLDivElement> {
   email: string
-  messages: OutgoingChitterMessage[]
+  messages: ChitterMessage[]
   gravatarOptions?: gravatar.Options
 }
 export const MarkdownMessages: React.FC<MarkdownMessagesProps> = ({

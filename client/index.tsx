@@ -13,32 +13,32 @@ import queryString from "query-string"
 import {
   ConnectionQuery,
   RoomID,
-  JoinRequest as JoinRequestMessage,
-  ChitterMessage,
   ServerMessages,
-  HistoryRequest,
-  HistoryRequestType,
-  JoinRequestType,
-  ChitterMessageRequest,
+  JoinRequestMessageType,
+  JoinRequestMessage,
+  JoinResponseMessage,
+  HistoryRequestMessageType,
+  HistoryRequestMessage,
   ChitterMessageRequestType,
-  JoinResponse as JoinResponseMessage,
+  ChitterMessageRequest,
+  ChitterMessage,
 } from "../types"
 
 import { String } from "runtypes"
 const VERSION = String.check(process.env.npm_package_version)
 const COMMIT = String.check(process.env.GIT_COMMIT)
 
-export type JoinOptions = { email?: string; name?: string }
+export type SendOptions = { email?: string; name?: string }
 export type OnReceiveCallback = (message: ChitterMessage) => void
 export type OnJoinCallback = (joined: boolean, err?: Error) => void
 export type JoinRequest = {
   room: RoomID
   onReceive: OnReceiveCallback
   onJoin: OnJoinCallback
-  options?: JoinOptions
+  sendOptions?: SendOptions
 }
 
-export type SendChitterMessage = (type: string, contents: unknown) => void
+export type SendChitterMessage = (type: string, contents: unknown) => string | undefined
 export type RequestChitterMessages = (end: Date, count: number) => void
 export type JoinResponse = {
   send: SendChitterMessage
@@ -129,33 +129,37 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, google
   }, [server, googleToken])
 
   const join = useCallback((request: JoinRequest) => {
-    const id = uuidv4()
-    joinRequests.current[id] = { ...request, status: false }
+    const view = uuidv4()
+    joinRequests.current[view] = { ...request, status: false }
 
-    const { room } = request
-    connection.current?.send(JSON.stringify(JoinRequestMessage.check({ type: JoinRequestType, id, room })))
+    const { room, sendOptions } = request
+    connection.current?.send(JSON.stringify(JoinRequestMessage.check({ type: JoinRequestMessageType, id: view, room })))
 
-    const send = (type: string, contents: unknown) => {
-      if (joinRequests.current[id].status !== true) {
+    const send = (type: string, contents: unknown): string | undefined => {
+      if (joinRequests.current[view].status !== true) {
         console.error("Can't send messages to room before joining")
-        return
+        return undefined
       }
+      const id = uuidv4()
       const message = ChitterMessageRequest.check({
         type: ChitterMessageRequestType,
-        id: uuidv4(),
+        id,
+        view,
         room,
         messageType: type,
         contents,
+        ...sendOptions,
       })
       connection.current?.send(JSON.stringify(message))
+      return id
     }
     const requestMessages = (end: Date, count: number) => {
-      if (joinRequests.current[id].status !== true) {
+      if (joinRequests.current[view].status !== true) {
         console.error("Can't request room history before joining")
         return
       }
-      const message = HistoryRequest.check({
-        type: HistoryRequestType,
+      const message = HistoryRequestMessage.check({
+        type: HistoryRequestMessageType,
         id: uuidv4(),
         room,
         end: end.toISOString(),
@@ -165,9 +169,9 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, google
     }
     const leave = () => {
       try {
-        messager.current.removeListener(room, joinRequests.current[id].onReceive)
+        messager.current.removeListener(room, joinRequests.current[view].onReceive)
       } catch (err) {}
-      delete joinRequests.current[id]
+      delete joinRequests.current[view]
     }
     return { send, request: requestMessages, leave }
   }, [])

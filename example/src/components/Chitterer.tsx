@@ -14,7 +14,7 @@ import makeStyles from "@material-ui/core/styles/makeStyles"
 import { LoginButton } from "@cs125/gatsby-theme-cs125/src/react-google-login"
 import { MarkdownMessages } from "./MarkdownMessages"
 import { MarkdownTextField } from "./MarkdownTextField"
-
+import moment from "moment"
 // Set up styles for the various parts of our little UI
 // makeStyles allows us to use the passed theme as needed, which we don't do here (yet)
 
@@ -69,31 +69,39 @@ export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
   const classes = useStyles()
 
   const chitter = useRef<JoinResponse | undefined>()
+  const waitingFor = useRef<string>()
+  const inputRef = useRef<{ clear: () => void }>(null)
+
+  const [joined, setJoined] = useState(false)
+  const [messages, setMessages] = useState<ChitterMessage[]>([])
 
   const email = props.email || actualEmail
   const name = props.name || actualName
 
-  const [joined, setJoined] = useState(false)
-
-  const [messages, setMessages] = useState<ChitterMessage[]>([])
-
   useEffect(() => {
     if (connected) {
-      const onReceive = (message: ChitterMessage) => {
-        if (message.messageType === "markdown" || message.messageType === "text") {
-          setMessages(m => [message, ...m])
+      const onReceive = (received: ChitterMessage) => {
+        if (received.id === waitingFor.current) {
+          inputRef.current?.clear()
+        }
+        if (received.messageType === "markdown" || received.messageType === "text") {
+          setMessages(messages =>
+            [...messages, received].sort((a, b) => moment(b.timestamp).valueOf() - moment(a.timestamp).valueOf())
+          )
         }
       }
       const onJoin = (joined: boolean) => setJoined(joined)
-      chitter.current = join({ room, onReceive, onJoin })
+      chitter.current = join({ room, onReceive, onJoin, sendOptions: { email, name } })
     }
-    return () => {
-      chitter.current && chitter.current.leave()
-    }
-  }, [connected, join, room, setMessages])
+    return () => chitter.current?.leave()
+  }, [connected, join, room, email, name, setMessages])
 
   const onNewMessage = useCallback(
-    (contents: string) => chitter.current && joined && chitter.current.send("markdown", contents),
+    (contents: string) => {
+      if (chitter.current && joined) {
+        waitingFor.current = chitter.current.send("markdown", contents)
+      }
+    },
     [joined]
   )
 
@@ -108,6 +116,7 @@ export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
         <MarkdownMessages messages={messages} email={email as string} gravatarOptions={gravatarOptions} />
       )}
       <MarkdownTextField
+        ref={inputRef}
         onNewMessage={onNewMessage}
         email={email as string}
         gravatarOptions={gravatarOptions}

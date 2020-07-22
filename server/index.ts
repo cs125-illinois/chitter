@@ -18,16 +18,16 @@ import { EventEmitter } from "events"
 import {
   ConnectionQuery,
   Versions,
-  JoinRequest,
-  JoinResponse,
+  JoinRequestMessage,
+  JoinResponseMessage,
   ChitterMessageRequest,
   ChitterMessage,
   SavedChitterMessage,
   ChitterMessageType,
   RoomID,
   ClientMessages,
-  HistoryRequest,
-  JoinResponseType,
+  HistoryRequestMessage,
+  JoinResponseMessageType,
 } from "../types"
 
 import { String, Array } from "runtypes"
@@ -101,14 +101,14 @@ router.get("/", async (ctx) => {
         console.error(`Bad message: ${data}`)
         return
       }
-      if (JoinRequest.guard(request)) {
+      if (JoinRequestMessage.guard(request)) {
         const { id, room } = request
         if (!roomListeners[room]) {
           const listener = (message: ChitterMessage) => ws.send(JSON.stringify(message))
           messager.addListener(room, listener)
           roomListeners[room] = listener
         }
-        const response = JoinResponse.check({ type: JoinResponseType, id, room })
+        const response = JoinResponseMessage.check({ type: JoinResponseMessageType, id, room })
         ws.send(JSON.stringify(response))
       } else if (ChitterMessageRequest.guard(request)) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -126,11 +126,12 @@ router.get("/", async (ctx) => {
           new: true,
           timestamp: new Date(),
         })
+        // setTimeout(() => messager.emit(receivedMessage.room, receivedMessage), 8000)
         messager.emit(receivedMessage.room, receivedMessage)
 
         const savingMessage = SavedChitterMessage.check({ ...receivedMessage, _id: outgoing.id, client, versions })
         collection.insertOne({ ...savingMessage }).catch((err) => console.debug(err))
-      } else if (HistoryRequest.guard(request)) {
+      } else if (HistoryRequestMessage.guard(request)) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id, room, count } = request
         if (!roomListeners[room]) {

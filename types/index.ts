@@ -40,6 +40,7 @@ export type ConnectionQuery = Static<typeof ConnectionQuery>
 
 const ChitterContents = Record({
   id: String, // Let the client set this ID so that it can detect its own messages
+  view: String, // Identifies the specific chat box that send this message
   room: String,
   messageType: String,
   contents: Unknown,
@@ -84,42 +85,40 @@ export const SavedChitterMessage = ChitterMessage.And(
 export type SavedChitterMessage = Static<typeof SavedChitterMessage>
 
 // client -> server: Request to join a room
-export const JoinRequestType = "joinrequest"
-export const JoinRequest = Record({
-  type: Literal(JoinRequestType),
+export const JoinRequestMessageType = "joinrequest"
+export const JoinRequestMessage = Record({
+  type: Literal(JoinRequestMessageType),
   id: String,
   room: String,
 })
-export type JoinMessage = Static<typeof JoinRequest>
+export type JoinMessageMessage = Static<typeof JoinRequestMessage>
 
 // server -> client: room request response
-export const JoinResponseType = "join"
-export const JoinResponse = Record({
-  type: Literal(JoinResponseType),
+export const JoinResponseMessageType = "join"
+export const JoinResponseMessage = Record({
+  type: Literal(JoinResponseMessageType),
   id: String,
   room: Union(String, Literal(false)),
 })
-export type JoinResponse = Static<typeof JoinResponse>
+export type JoinResponseMessage = Static<typeof JoinResponseMessage>
 
 // client -> server: Request for room history
 // Server responds with 0 or more ReceivedChitterMessages, and then a history response
-export const HistoryRequestType = "historyrequest"
-export const HistoryRequest = Record({
-  type: Literal(HistoryRequestType),
+export const HistoryRequestMessageType = "historyrequest"
+export const HistoryRequestMessage = Record({
+  type: Literal(HistoryRequestMessageType),
   id: String,
   room: String,
   end: String,
   count: Number,
 })
-export type HistoryRequest = Static<typeof HistoryRequest>
-
-// All messages that can be sent by the client
-export const ClientMessages = Union(ChitterMessageRequest, JoinRequest, HistoryRequest)
+export type HistoryRequestMessage = Static<typeof HistoryRequestMessage>
 
 // server -> client: Final response to close room history request
 // Server responds with 0 or more ReceivedChitterMessages, and then a history response
+export const HistoryResponseMessageType = "history"
 export const HistoryResponseMessage = Record({
-  type: Literal("historyresponse"),
+  type: Literal(HistoryResponseMessageType),
   id: String,
   start: String,
   end: String,
@@ -127,5 +126,7 @@ export const HistoryResponseMessage = Record({
 })
 export type HistoryResponseMessage = Static<typeof HistoryResponseMessage>
 
+// All messages that can be sent by the client
+export const ClientMessages = Union(ChitterMessageRequest, JoinRequestMessage, HistoryRequestMessage)
 // All messages that can be sent by the server
-export const ServerMessages = Union(ChitterMessage, JoinResponse)
+export const ServerMessages = Union(ChitterMessage, JoinResponseMessage, HistoryResponseMessage)
