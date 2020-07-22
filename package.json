@@ -39,6 +39,7 @@
     "koa-bodyparser": "^4.3.0",
     "koa-easy-ws": "https://github.com/cs125-illinois/koa-easy-ws.git",
     "koa-router": "^9.1.0",
+    "moment": "^2.27.0",
     "mongodb": "^3.5.9",
     "mongodb-uri": "^0.9.7",
     "query-string": "^6.13.1",

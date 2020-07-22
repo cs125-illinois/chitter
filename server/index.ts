@@ -3,6 +3,8 @@ import Router from "koa-router"
 import bodyParser from "koa-bodyparser"
 import websocket from "koa-easy-ws"
 
+import moment from "moment"
+
 import { MongoClient as mongo } from "mongodb"
 import mongodbUri from "mongodb-uri"
 
@@ -16,15 +18,16 @@ import { EventEmitter } from "events"
 import {
   ConnectionQuery,
   Versions,
-  JoinMessage,
-  RoomsMessage,
-  IncomingChitterMessage,
-  ReceiveChitterMessage,
-  OutgoingChitterMessage,
+  JoinRequest,
+  JoinResponse,
+  ChitterMessageRequest,
+  ChitterMessage,
   SavedChitterMessage,
-  OutgoingChitterMessageType,
+  ChitterMessageType,
   RoomID,
   ClientMessages,
+  HistoryRequest,
+  JoinResponseType,
 } from "../types"
 
 import { String, Array } from "runtypes"
@@ -57,7 +60,7 @@ router.get("/", async (ctx) => {
   const collection = await chitterCollection
 
   const connectionQuery = ConnectionQuery.check(ctx.request.query)
-  const { version, commit, googleToken, clientID } = connectionQuery
+  const { version, commit, googleToken, client } = connectionQuery
 
   // Should be saved with messages for auditing purposes
   const versions = Versions.check({
@@ -87,45 +90,69 @@ router.get("/", async (ctx) => {
   }
 
   const ws = PongWS(await ctx.ws())
-  const roomListeners: Record<RoomID, ReceiveChitterMessage> = {}
+  const roomListeners: Record<RoomID, (message: ChitterMessage) => void> = {}
 
   ws.addEventListener(
     "message",
     filterPingPongMessages(async ({ data }) => {
       // Handle incoming messages here
-      const incoming = JSON.parse(data.toString())
-      if (!ClientMessages.guard(incoming)) {
+      const request = JSON.parse(data.toString())
+      if (!ClientMessages.guard(request)) {
         console.error(`Bad message: ${data}`)
         return
       }
-      if (JoinMessage.guard(incoming)) {
-        if (!roomListeners[incoming.roomID]) {
-          const listener = (message: OutgoingChitterMessage) => ws.send(JSON.stringify(message))
-          messager.addListener(incoming.roomID, listener)
-          roomListeners[incoming.roomID] = listener
+      if (JoinRequest.guard(request)) {
+        const { id, room } = request
+        if (!roomListeners[room]) {
+          const listener = (message: ChitterMessage) => ws.send(JSON.stringify(message))
+          messager.addListener(room, listener)
+          roomListeners[room] = listener
         }
-        const roomsMessage = RoomsMessage.check({ type: "rooms", rooms: Object.keys(roomListeners) })
-        ws.send(JSON.stringify(roomsMessage))
-      } else if (IncomingChitterMessage.guard(incoming)) {
+        const response = JoinResponse.check({ type: JoinResponseType, id, room })
+        ws.send(JSON.stringify(response))
+      } else if (ChitterMessageRequest.guard(request)) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { email, name, type, ...outgoing } = incoming
+        const { email, name, type, ...outgoing } = request
         if (!DEVELOPMENT && (email || name)) {
           console.warn("Client tried to set email address or name")
           return
         }
 
-        const receivedMessage = OutgoingChitterMessage.check({
+        const receivedMessage = ChitterMessage.check({
           ...outgoing,
-          type: OutgoingChitterMessageType,
-          email: (DEVELOPMENT && incoming.email) || clientEmail,
-          name: (DEVELOPMENT && incoming.name) || clientName,
+          type: ChitterMessageType,
+          email: (DEVELOPMENT && request.email) || clientEmail,
+          name: (DEVELOPMENT && request.name) || clientName,
           new: true,
           timestamp: new Date(),
         })
         messager.emit(receivedMessage.room, receivedMessage)
 
-        const savingMessage = SavedChitterMessage.check({ ...receivedMessage, _id: outgoing.id, clientID, versions })
+        const savingMessage = SavedChitterMessage.check({ ...receivedMessage, _id: outgoing.id, client, versions })
         collection.insertOne({ ...savingMessage }).catch((err) => console.debug(err))
+      } else if (HistoryRequest.guard(request)) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { id, room, count } = request
+        if (!roomListeners[room]) {
+          console.error("Can't request history for a room that the client hasn't joined")
+          return
+        }
+        const end = moment(request.end)
+        if (!end.isValid) {
+          console.error("Invalid date in history request")
+          return
+        }
+        const messages = await collection
+          .find({ room, timestamp: { $lte: end.toDate() } })
+          .limit(count)
+          .sort({ timestamp: -1 })
+          .toArray()
+        messages.forEach((saved) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { _id, clientID, versions, ...m } = saved
+          const message = ChitterMessage.check({ ...m, new: false })
+          ws.send(JSON.stringify(message))
+        })
       }
     })
   )

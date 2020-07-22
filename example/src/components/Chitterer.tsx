@@ -1,11 +1,9 @@
 import React, { useEffect, useState, useCallback, useRef } from "react"
 import PropTypes from "prop-types"
 
-import { v4 as uuidv4 } from "uuid"
-
 // Note that we're already wrapped this component with a ChitterProvider in wrapRootElement.tsx
 // So all we need here is the context provider and a type
-import { RoomID, useChitter, SendChitterMessage, ReceiveChitterMessage, OutgoingChitterMessage } from "@cs125/chitter"
+import { RoomID, useChitter, JoinResponse, ChitterMessage } from "@cs125/chitter"
 import { useGoogleUser, useBasicGoogleProfile } from "@cs125/react-google-login"
 
 // Various bits of the Material UI framework
@@ -65,43 +63,38 @@ const gravatarOptions = {
 }
 
 export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
-  const { connected, join, leave } = useChitter()
+  const { connected, join } = useChitter()
   const { isSignedIn } = useGoogleUser()
   const { email: actualEmail, name: actualName } = useBasicGoogleProfile()
   const classes = useStyles()
 
-  const componentID = useRef<string>(uuidv4())
-  const sender = useRef<SendChitterMessage>()
+  const chitter = useRef<JoinResponse | undefined>()
 
   const email = props.email || actualEmail
   const name = props.name || actualName
 
-  // useEffect hooks run after the initial render and then whenever their dependencies change
-  // Here we join the room this component is configured to connect to
-  // So far the callback we register just appends new messages to our array, which seems reasonable
-  // but is something we may need to update later
+  const [joined, setJoined] = useState(false)
 
-  const [messages, setMessages] = useState<OutgoingChitterMessage[]>([])
+  const [messages, setMessages] = useState<ChitterMessage[]>([])
 
   useEffect(() => {
-    let listener: ReceiveChitterMessage | undefined
     if (connected) {
-      listener = (message: OutgoingChitterMessage) => {
+      const onReceive = (message: ChitterMessage) => {
         if (message.messageType === "markdown" || message.messageType === "text") {
           setMessages(m => [message, ...m])
         }
       }
-      sender.current = join(componentID.current, room, listener)
+      const onJoin = (joined: boolean) => setJoined(joined)
+      chitter.current = join({ room, onReceive, onJoin })
     }
     return () => {
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      listener && leave(componentID.current, listener)
+      chitter.current && chitter.current.leave()
     }
-  }, [connected, join, leave, room, setMessages])
+  }, [connected, join, room, setMessages])
 
   const onNewMessage = useCallback(
-    (contents: string) => sender.current && sender.current("markdown", contents, { email, name }),
-    [email, name]
+    (contents: string) => chitter.current && joined && chitter.current.send("markdown", contents),
+    [joined]
   )
 
   // Pass props through to the top-level div to allow external styling
