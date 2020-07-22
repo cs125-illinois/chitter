@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-
 import Koa from "koa"
 import Router from "koa-router"
 import bodyParser from "koa-bodyparser"
@@ -15,12 +13,29 @@ import { PongWS, filterPingPongMessages } from "@cs125/pingpongws"
 
 import { EventEmitter } from "events"
 
-import { ConnectionQuery, Versions, JoinMessage, RoomsMessage, ChitterMessage, ReceiveChitterMessage } from "../types"
+import {
+  ConnectionQuery,
+  Versions,
+  JoinMessage,
+  RoomsMessage,
+  IncomingChitterMessage,
+  ReceiveChitterMessage,
+  OutgoingChitterMessage,
+  SavedChitterMessage,
+  OutgoingChitterMessageType,
+  RoomID,
+  ClientMessages,
+} from "../types"
 
 import { String, Array } from "runtypes"
 const VERSIONS = {
   commit: String.check(process.env.GIT_COMMIT),
   server: String.check(process.env.npm_package_version),
+}
+
+const DEVELOPMENT = process.env.CHITTER_DEVELOPMENT
+if (DEVELOPMENT) {
+  console.warn("Warning: running Chitter in development mode")
 }
 
 // Set up Koa instance and router
@@ -32,24 +47,17 @@ const googleClient = new OAuth2Client(googleClientIDs[0])
 
 const { database } = mongodbUri.parse(process.env.MONGODB as string)
 const client = mongo.connect(process.env.MONGODB as string, { useNewUrlParser: true, useUnifiedTopology: true })
-// Unfortunately node still doesn't allow await at the top level, meaning that this either has to be a promise
-// or be passed around throughout our app
-// We've chosen this approach but it creates an additional promise chain you need to follow each time you want to use
-// the collection, like this:
-// await (await chitterCollection).insert(...
-// Gross, but it works
 const chitterCollection = client.then((c) => c.db(database).collection(process.env.MONGODB_COLLECTION || "chitter"))
-
-// Possible useful type aliases, just to make our mappings and function declarations more clear
-type ClientID = string
-type RoomID = string
 
 // We use a single event emitter to distribute messages between connected clients
 const messager = new EventEmitter()
 
 router.get("/", async (ctx) => {
+  // Need to finalize the promise chain, but this is a no-op after the first connection
+  const collection = await chitterCollection
+
   const connectionQuery = ConnectionQuery.check(ctx.request.query)
-  const { version, commit, googleToken } = connectionQuery
+  const { version, commit, googleToken, clientID } = connectionQuery
 
   // Should be saved with messages for auditing purposes
   const versions = Versions.check({
@@ -63,15 +71,20 @@ router.get("/", async (ctx) => {
     },
   })
 
-  // Fail if we can't obtain an email address
-  // Eventually add CS 125 membership check here as well
-  let email
+  // Check for a valid login token and reject otherwise
+  let clientEmail: string | undefined
+  let clientName: string | undefined
   try {
-    email = (await googleClient.verifyIdToken({ idToken: googleToken, audience: googleClientIDs || [] })).getPayload()
-      ?.email
+    const payload = (
+      await googleClient.verifyIdToken({ idToken: googleToken, audience: googleClientIDs || [] })
+    ).getPayload()
+    clientEmail = payload?.email
+    clientName = payload?.name
   } catch (err) {}
-  ctx.assert(email !== undefined, 400, "Login required")
-  console.log(email)
+  if (clientEmail === undefined || clientName === undefined) {
+    console.error(`Unauthorized connection request`)
+    return ctx.throw(400, "Login required")
+  }
 
   const ws = PongWS(await ctx.ws())
   const roomListeners: Record<RoomID, ReceiveChitterMessage> = {}
@@ -80,24 +93,39 @@ router.get("/", async (ctx) => {
     "message",
     filterPingPongMessages(async ({ data }) => {
       // Handle incoming messages here
-      const message = JSON.parse(data.toString())
-      if (JoinMessage.guard(message)) {
-        if (!roomListeners[message.roomID]) {
-          const listener = (message: ChitterMessage) => {
-            ws.send(JSON.stringify(message))
-          }
-          messager.addListener(message.roomID, listener)
-          roomListeners[message.roomID] = listener
+      const incoming = JSON.parse(data.toString())
+      if (!ClientMessages.guard(incoming)) {
+        console.error(`Bad message: ${data}`)
+        return
+      }
+      if (JoinMessage.guard(incoming)) {
+        if (!roomListeners[incoming.roomID]) {
+          const listener = (message: OutgoingChitterMessage) => ws.send(JSON.stringify(message))
+          messager.addListener(incoming.roomID, listener)
+          roomListeners[incoming.roomID] = listener
         }
-
         const roomsMessage = RoomsMessage.check({ type: "rooms", rooms: Object.keys(roomListeners) })
         ws.send(JSON.stringify(roomsMessage))
-      } else if (ChitterMessage.guard(message)) {
-        messager.emit(message.room, message)
-      } else {
-        // As long as the if-else above is exhaustive over all possible messages we expect to receive from the client
-        // this is a good sanity check
-        console.error(`Bad message: ${JSON.stringify(message, null, 2)}`)
+      } else if (IncomingChitterMessage.guard(incoming)) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { email, name, type, ...outgoing } = incoming
+        if (!DEVELOPMENT && (email || name)) {
+          console.warn("Client tried to set email address or name")
+          return
+        }
+
+        const receivedMessage = OutgoingChitterMessage.check({
+          ...outgoing,
+          type: OutgoingChitterMessageType,
+          email: (DEVELOPMENT && incoming.email) || clientEmail,
+          name: (DEVELOPMENT && incoming.name) || clientName,
+          new: true,
+          timestamp: new Date(),
+        })
+        messager.emit(receivedMessage.room, receivedMessage)
+
+        const savingMessage = SavedChitterMessage.check({ ...receivedMessage, _id: outgoing.id, clientID, versions })
+        collection.insertOne({ ...savingMessage }).catch((err) => console.debug(err))
       }
     })
   )

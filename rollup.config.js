@@ -26,7 +26,7 @@ export default ["cjs", "es"].map((format) => ({
     commonJS({
       include: "node_modules/**",
       namedExports: {
-        runtypes: ["Record", "Partial", "Number", "String", "Array", "Static", "Union"],
+        runtypes: ["Record", "Partial", "Number", "String", "Array", "Static", "Union", "Unknown", "Boolean"],
         events: ["EventEmitter"],
       },
     }),

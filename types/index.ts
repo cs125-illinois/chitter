@@ -1,4 +1,4 @@
-import { Record, Static, String, Literal, Array, Union } from "runtypes"
+import { Record, Static, String, Literal, Array, Union, InstanceOf, Unknown, Number, Boolean, Partial } from "runtypes"
 
 // Anything that goes over the wire should be typed here.
 // These type definitions are shared by the client and the server, since one end will
@@ -9,8 +9,9 @@ import { Record, Static, String, Literal, Array, Union } from "runtypes"
 
 // Useful type aliases
 export type RoomID = string
-export type SendChitterMessage = (message: ChitterMessage) => void
-export type ReceiveChitterMessage = (message: ChitterMessage) => void
+export type SendOptions = { email?: string; name?: string }
+export type SendChitterMessage = (type: string, contents: unknown, options?: SendOptions) => void
+export type ReceiveChitterMessage = (message: OutgoingChitterMessage) => void
 
 // Combined versions and commits, assembled on the server
 export const Versions = Record({
@@ -40,18 +41,50 @@ export type ConnectionQuery = Static<typeof ConnectionQuery>
 // It's usually best to keep client -> server messages distinct from
 // server -> messages, even if they have the same data shape.
 
-// But... in this case, we have one message type that clearly needs to move
-// in both directions
-// TODO: Add things here as needed
-export const ChitterMessage = Record({
-  type: Literal("message"),
-  id: String,
-  clientID: String,
+const ChitterMessage = Record({
+  id: String, // Let the client set this ID so that it can detect its own messages
   room: String,
   messageType: String,
-  contents: String,
+  contents: Unknown,
 })
-export type ChitterMessage = Static<typeof ChitterMessage>
+
+// client -> server: message to send to a room
+export const IncomingChitterMessageType = "incomingmessage"
+export const IncomingChitterMessage = ChitterMessage.And(
+  Record({
+    type: Literal(IncomingChitterMessageType),
+  })
+).And(
+  // Only set by the client during development
+  Partial({
+    email: String,
+    name: String,
+  })
+)
+export type IncomingChitterMessage = Static<typeof IncomingChitterMessage>
+
+// server -> client: original message with some fields added
+export const OutgoingChitterMessageType = "outgoingmessage"
+export const OutgoingChitterMessage = ChitterMessage.And(
+  Record({
+    type: Literal(OutgoingChitterMessageType),
+    new: Boolean,
+    timestamp: Union(String, InstanceOf(Date)),
+    email: String,
+    name: String,
+  })
+)
+export type OutgoingChitterMessage = Static<typeof OutgoingChitterMessage>
+
+// server -> database: add clientID field and override type
+export const SavedChitterMessage = OutgoingChitterMessage.And(
+  Record({
+    _id: String,
+    clientID: String,
+    versions: Versions,
+  })
+)
+export type SavedChitterMessage = Static<typeof SavedChitterMessage>
 
 // client -> server: Request to join a room
 export const JoinMessage = Record({
@@ -60,8 +93,19 @@ export const JoinMessage = Record({
 })
 export type JoinMessage = Static<typeof JoinMessage>
 
+// client -> server: Request for room history
+// Server responds with 0 or more ReceivedChitterMessages, and then a history response
+export const HistoryRequestMessage = Record({
+  type: Literal("historyrequest"),
+  id: String,
+  room: String,
+  start: String,
+  count: Number,
+})
+export type HistoryRequestMessage = Static<typeof HistoryRequestMessage>
+
 // All messages that can be sent by the client
-export const ClientMessages = Union(JoinMessage)
+export const ClientMessages = Union(IncomingChitterMessage, JoinMessage, HistoryRequestMessage)
 
 // server -> client: List rooms that the client has joined
 export const RoomsMessage = Record({
@@ -70,5 +114,16 @@ export const RoomsMessage = Record({
 })
 export type RoomsMessage = Static<typeof RoomsMessage>
 
+// server -> client: Final response to close room history request
+// Server responds with 0 or more ReceivedChitterMessages, and then a history response
+export const HistoryResponseMessage = Record({
+  type: Literal("historyresponse"),
+  id: String,
+  start: String,
+  end: String,
+  count: Number,
+})
+export type HistoryResponseMessage = Static<typeof HistoryResponseMessage>
+
 // All messages that can be sent by the server
-export const ServerMessages = Union(RoomsMessage)
+export const ServerMessages = Union(OutgoingChitterMessage, RoomsMessage)

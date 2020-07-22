@@ -2,7 +2,7 @@
 import React, { createContext, useContext, ReactNode, useRef, useEffect, useState, useCallback } from "react"
 import PropTypes from "prop-types"
 
-import ReconnectingWebSocket, { Event } from "reconnecting-websocket"
+import ReconnectingWebSocket from "reconnecting-websocket"
 import { PingWS, filterPingPongMessages } from "@cs125/pingpongws"
 
 import { EventEmitter } from "events"
@@ -14,10 +14,15 @@ import {
   ConnectionQuery,
   RoomsMessage,
   RoomID,
-  ChitterMessage,
+  IncomingChitterMessage,
+  IncomingChitterMessageType,
   JoinMessage,
   SendChitterMessage,
   ReceiveChitterMessage,
+  SendOptions,
+  ClientMessages,
+  OutgoingChitterMessage,
+  ServerMessages,
 } from "../types"
 
 import { String } from "runtypes"
@@ -25,8 +30,8 @@ const VERSION = String.check(process.env.npm_package_version)
 const COMMIT = String.check(process.env.GIT_COMMIT)
 
 // Type and create our context that will be passed to consumers lower in the component tree
-// TODO: Add things here as needed, including callbacks allowing components to send messagse
 export interface ChitterContext {
+  available: boolean
   connected: boolean
   rooms: RoomID[]
   join: (requestID: string, room: RoomID, onReceive: ReceiveChitterMessage) => SendChitterMessage
@@ -58,11 +63,16 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, google
   const [connected, setConnected] = useState(false)
   const [rooms, setRooms] = useState<RoomID[]>([])
 
+  // Event emitter that we use to fan-out messages to different chat components
   const messager = useRef(new EventEmitter())
 
   const connection = useRef<ReconnectingWebSocket | undefined>(undefined)
   useEffect(() => {
     sessionStorage.setItem("chitter:id", clientID.current)
+    return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      messager.current?.removeAllListeners()
+    }
   }, [])
 
   // Set up the websocket connection
@@ -89,12 +99,8 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, google
     // Note that the ReconnectingWebsocket and our PingPong wrapper will
     // send keep-alive messages and attempt to reconnect across disconnections
     // That keeps our code fairly simple
-    connection.current.addEventListener("open", () => {
-      setConnected(true)
-    })
-    connection.current.addEventListener("close", () => {
-      setConnected(false)
-    })
+    connection.current.addEventListener("open", () => setConnected(true))
+    connection.current.addEventListener("close", () => setConnected(false))
 
     connection.current.addEventListener(
       "message",
@@ -102,9 +108,13 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, google
         // Very similar to the server-side code.
         // Handle any incoming messages that we could receive from the server.
         const message = JSON.parse(data)
+        if (!ServerMessages.guard(message)) {
+          console.error(`Bad message: ${JSON.stringify(message, null, 2)}`)
+          return
+        }
         if (RoomsMessage.guard(message)) {
           setRooms(message.rooms)
-        } else if (ChitterMessage.guard(message)) {
+        } else if (OutgoingChitterMessage.guard(message)) {
           messager.current.emit(message.room, message)
         }
       })
@@ -120,19 +130,26 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, google
 
   const join = useCallback((requestID: string, room: RoomID, onReceive: ReceiveChitterMessage) => {
     roomRequests.current[requestID] = { room, onReceive }
-
     connection.current?.send(JSON.stringify(JoinMessage.check({ type: "join", roomID: room })))
-
     messager.current.addListener(room, onReceive)
 
-    return (message: ChitterMessage) => {
+    return (type: string, contents: unknown, options: SendOptions = {}) => {
+      const message = IncomingChitterMessage.check({
+        type: IncomingChitterMessageType,
+        id: uuidv4(),
+        room,
+        messageType: type,
+        contents,
+        email: options.email,
+        name: options.name,
+      })
       connection.current?.send(JSON.stringify(message))
     }
   }, [])
 
   const leave = useCallback((requestID: string) => {
     if (!roomRequests.current[requestID]) {
-      console.warn(`Ignoring invalid requestID: ${requestID}`)
+      console.error(`Ignoring invalid requestID: ${requestID}`)
       return
     }
     const { room, onReceive } = roomRequests.current[requestID]
@@ -140,7 +157,11 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, google
     delete roomRequests.current[requestID]
   }, [])
 
-  return <ChitterContext.Provider value={{ connected, rooms, join, leave }}>{children}</ChitterContext.Provider>
+  return (
+    <ChitterContext.Provider value={{ available: true, connected, rooms, join, leave }}>
+      {children}
+    </ChitterContext.Provider>
+  )
 }
 
 ChitterProvider.propTypes = {
@@ -157,6 +178,7 @@ export const useChitter = (): ChitterContext => {
 // It should never be used by an actual subscriber
 // Just set default values for fields and functions that throw for callbacks
 export const ChitterContext = createContext<ChitterContext>({
+  available: false,
   connected: false,
   rooms: [],
   join: () => {
@@ -167,4 +189,4 @@ export const ChitterContext = createContext<ChitterContext>({
   },
 })
 
-export { ChitterMessage }
+export { IncomingChitterMessage as ChitterMessage }

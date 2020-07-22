@@ -5,18 +5,17 @@ import { v4 as uuidv4 } from "uuid"
 
 // Note that we're already wrapped this component with a ChitterProvider in wrapRootElement.tsx
 // So all we need here is the context provider and a type
-import { RoomID, useChitter, SendChitterMessage, ChitterMessage, ReceiveChitterMessage } from "@cs125/chitter"
-import { useGoogleUser } from "@cs125/react-google-login"
+import { RoomID, useChitter, SendChitterMessage, ReceiveChitterMessage, OutgoingChitterMessage } from "@cs125/chitter"
+import { useGoogleUser, useBasicGoogleProfile } from "@cs125/react-google-login"
 
 // Various bits of the Material UI framework
 // We try to use this style of import since it leads to smaller bundles,
 // but this is just an example component so it doesn't really matter that much
 import makeStyles from "@material-ui/core/styles/makeStyles"
-import { P } from "@cs125/gatsby-theme-cs125/src/material-ui"
-import TextField from "@material-ui/core/TextField"
-import { CSSProperties } from "@material-ui/core/styles/withStyles"
 
 import { LoginButton } from "@cs125/gatsby-theme-cs125/src/react-google-login"
+import { MarkdownMessages } from "./MarkdownMessages"
+import { MarkdownTextField } from "./MarkdownTextField"
 
 // Set up styles for the various parts of our little UI
 // makeStyles allows us to use the passed theme as needed, which we don't do here (yet)
@@ -27,7 +26,14 @@ const useStyles = makeStyles(_ => ({
     width: "100%",
     border: "1px solid grey",
     padding: 8,
+    paddingRight: 0,
     position: "relative",
+    overflow: "hidden",
+    display: "flex",
+    justifyContent: "flex-end",
+    flexDirection: "column",
+    height: 256,
+    resize: "vertical",
   },
   login: {
     position: "absolute",
@@ -41,93 +47,64 @@ const useStyles = makeStyles(_ => ({
     justifyContent: "center",
     alignItems: "center",
   },
-  messages: {
-    display: "flex",
-    flexDirection: "column-reverse",
-    maxHeight: 128,
-    overflowY: "scroll",
-  },
-  message: {
-    flex: 1,
-  },
   input: {
-    width: "100%",
+    display: "flex",
+    flexDirection: "row",
   },
 }))
 
-export interface ChittererProps {
+export interface ChittererProps extends React.HTMLAttributes<HTMLDivElement> {
   room: RoomID
-  style: CSSProperties
+  email?: string
+  name?: string
 }
-export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
-  const componentID = useRef<string>(uuidv4())
 
+const gravatarOptions = {
+  r: "pg",
+  d: encodeURI("https://cs125.cs.illinois.edu/img/logos/cs125-with-border-120x120.png"),
+}
+
+export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
   const { connected, join, leave } = useChitter()
   const { isSignedIn } = useGoogleUser()
-
+  const { email: actualEmail, name: actualName } = useBasicGoogleProfile()
   const classes = useStyles()
 
-  const [messages, setMessages] = useState<ChitterMessage[]>([])
+  const componentID = useRef<string>(uuidv4())
+  const sender = useRef<SendChitterMessage>()
+
+  const email = props.email || actualEmail
+  const name = props.name || actualName
 
   // useEffect hooks run after the initial render and then whenever their dependencies change
   // Here we join the room this component is configured to connect to
   // So far the callback we register just appends new messages to our array, which seems reasonable
   // but is something we may need to update later
-  const sender = useRef<SendChitterMessage>()
+
+  const [messages, setMessages] = useState<OutgoingChitterMessage[]>([])
 
   useEffect(() => {
     let listener: ReceiveChitterMessage | undefined
     if (connected) {
-      listener = (message: ChitterMessage) => {
-        setMessages(m => [message, ...m])
+      listener = (message: OutgoingChitterMessage) => {
+        if (message.messageType === "markdown" || message.messageType === "text") {
+          setMessages(m => [message, ...m])
+        }
       }
       sender.current = join(componentID.current, room, listener)
     }
     return () => {
-      listener && leave(room, listener)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      listener && leave(componentID.current, listener)
     }
   }, [connected, join, leave, room, setMessages])
 
-  // Callbacks for our input element below
-  // You can define these right on the element itself, but then they are recreated on every render
-  // So using the useCallback hook is slightly more efficient, and maybe a bit clearer
-  const [input, setInput] = useState("")
-
-  // We control the value of the input box, so each time it changes we need to update our copy
-  const onChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setInput(event.target.value)
-  }, [])
-
-  // We want enter to trigger sending the message, but also want to allow Control-Enter to advance
-  // to the next line
-  const onKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>, contents: string) => {
-      if (event.key == "Enter") {
-        if (!event.ctrlKey) {
-          // Eventually we'll want the context provider to assemble the message, since it maintains the client ID
-          // For now we'll mock out something so that we can insert it into our array
-          const newMessage = ChitterMessage.check({
-            type: "message",
-            id: uuidv4(),
-            clientID: "",
-            room,
-            messageType: "text",
-            contents,
-          })
-          // TODO: Actually send the message
-          // For now, just add it to our message list
-          sender.current && sender.current(newMessage)
-          setInput("")
-        } else {
-          setInput(i => i + "\n")
-        }
-        // Prevent the default event from bubbling upward
-        event.preventDefault()
-      }
-    },
-    [room]
+  const onNewMessage = useCallback(
+    (contents: string) => sender.current && sender.current("markdown", contents, { email, name }),
+    [email, name]
   )
 
+  // Pass props through to the top-level div to allow external styling
   return (
     <div className={classes.chitterer} {...props}>
       {!isSignedIn ? (
@@ -135,21 +112,13 @@ export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
           <LoginButton />
         </div>
       ) : (
-        <div className={classes.messages}>
-          {messages.map((message, i) => (
-            <div key={i} className={classes.message}>
-              <P>{message.contents}</P>
-            </div>
-          ))}
-        </div>
+        <MarkdownMessages messages={messages} email={email as string} gravatarOptions={gravatarOptions} />
       )}
-      <TextField
-        value={input}
-        className={classes.input}
+      <MarkdownTextField
+        onNewMessage={onNewMessage}
+        email={email as string}
+        gravatarOptions={gravatarOptions}
         placeholder="Send"
-        multiline
-        onChange={onChange}
-        onKeyDown={e => onKeyDown(e, input)}
       />
     </div>
   )
@@ -157,4 +126,7 @@ export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
 
 Chitterer.propTypes = {
   room: PropTypes.string.isRequired,
+  style: PropTypes.any,
+  email: PropTypes.string,
+  name: PropTypes.string,
 }
