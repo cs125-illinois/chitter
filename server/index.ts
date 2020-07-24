@@ -156,8 +156,8 @@ router.get("/", async (ctx) => {
       } else if (ChitterMessageRequest.guard(request)) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { email, name, type, ...outgoing } = request
-        if (!DEVELOPMENT && (email || name)) {
-          console.warn("Client tried to set email address or name")
+        if (!DEVELOPMENT && (email || name) && email !== clientEmail && name !== clientName) {
+          console.warn("Client tried to change email address or name")
           return
         }
 
