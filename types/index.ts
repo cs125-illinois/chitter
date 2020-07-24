@@ -143,5 +143,10 @@ export const ServerStatus = Record({
     join: Number,
   }),
   googleClientIDs: Array(String),
-})
+}).And(
+  Partial({
+    rooms: Array(String),
+    domains: Array(String),
+  })
+)
 export type ServerStatus = Static<typeof ServerStatus>

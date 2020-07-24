@@ -43,13 +43,16 @@ if (DEVELOPMENT) {
   console.warn("Warning: running Chitter in development mode")
 }
 
-const ALLOWED_ROOMS = Array(String).check(process.env.CHITTER_ALLOWED_ROOMS?.split(",") || [])
-if (!DEVELOPMENT && ALLOWED_ROOMS.length === 0) {
+const allowedRooms = Array(String).check(process.env.CHITTER_ALLOWED_ROOMS?.split(",") || [])
+if (!DEVELOPMENT && allowedRooms.length === 0) {
   console.error("No rooms configured. Exiting.")
   process.exit(-1)
 }
 // Allow all rooms in development
-!DEVELOPMENT && console.log(`Allowed rooms: ${ALLOWED_ROOMS.join(", ")}`)
+!DEVELOPMENT && console.log(`Allowed rooms: ${allowedRooms.join(", ")}`)
+
+const validDomains = process.env.VALID_DOMAINS && process.env.VALID_DOMAINS.split(",").map((s) => s.trim())
+const port = process.env.BACKEND_PORT ? parseInt(process.env.BACKEND_PORT) : 8888
 
 // Set up Koa instance and router
 const app = new Koa()
@@ -74,6 +77,12 @@ const serverStatus: ServerStatus = ServerStatus.check({
   },
   googleClientIDs,
 })
+if (!DEVELOPMENT) {
+  serverStatus.rooms = allowedRooms
+}
+if (validDomains) {
+  serverStatus.domains = validDomains
+}
 
 // We use a single event emitter to distribute messages between connected clients
 const messager = new EventEmitter()
@@ -131,7 +140,7 @@ router.get("/", async (ctx) => {
       }
       if (JoinRequestMessage.guard(request)) {
         const { id, room } = request
-        if (!DEVELOPMENT && !ALLOWED_ROOMS.includes(room)) {
+        if (!DEVELOPMENT && !allowedRooms.includes(room)) {
           console.warn(`Not allowed to join room ${room}`)
           ws.send(JSON.stringify(JoinResponseMessage.check({ type: JoinResponseMessageType, id, room: undefined })))
           return
@@ -214,9 +223,6 @@ chitterCollection.then(async (c) => {
   // Set up some indices on our collection to make queries faster
   // Update as needed
   await c.createIndex({ room: 1, timestamp: 1 })
-
-  const validDomains = process.env.VALID_DOMAINS && process.env.VALID_DOMAINS.split(",").map((s) => s.trim)
-  const port = process.env.BACKEND_PORT ? parseInt(process.env.BACKEND_PORT) : 8888
 
   app
     .use(
