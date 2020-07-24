@@ -118,13 +118,15 @@ router.get("/", async (ctx) => {
           return
         }
 
+        const now = new Date()
         const receivedMessage = ChitterMessage.check({
           ...outgoing,
           type: ChitterMessageType,
           email: (DEVELOPMENT && request.email) || clientEmail,
           name: (DEVELOPMENT && request.name) || clientName,
           new: true,
-          timestamp: new Date(),
+          timestamp: now,
+          unixtime: now.valueOf(),
         })
         // setTimeout(() => messager.emit(receivedMessage.room, receivedMessage), 8000)
         messager.emit(receivedMessage.room, receivedMessage)
@@ -143,6 +145,7 @@ router.get("/", async (ctx) => {
           console.error("Invalid date in history request")
           return
         }
+        // TODO: Check limit to make sure its appropriate
         const messages = await collection
           .find({ room, timestamp: { $lte: end.toDate() } })
           .limit(count)
