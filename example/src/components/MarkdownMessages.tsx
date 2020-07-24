@@ -1,4 +1,4 @@
-import React from "react"
+import React, { forwardRef, useImperativeHandle, useRef } from "react"
 import PropTypes from "prop-types"
 
 import gravatar from "gravatar"
@@ -52,61 +52,69 @@ export interface MarkdownMessagesProps extends React.HTMLAttributes<HTMLDivEleme
   messages: ChitterMessage[]
   gravatarOptions?: gravatar.Options
 }
-export const MarkdownMessages: React.FC<MarkdownMessagesProps> = ({
-  email,
-  messages,
-  gravatarOptions = {},
-  ...props
-}) => {
-  const classes = useStyles()
-  const theme = useTheme()
+// eslint-disable-next-line react/display-name
+export const MarkdownMessages = forwardRef<{ scrollToBottom: () => void }, MarkdownMessagesProps>(
+  ({ email, messages, gravatarOptions = {}, ...props }, ref) => {
+    const classes = useStyles()
+    const theme = useTheme()
 
-  const now = new Date()
-  return (
-    <div className={classes.messages} {...props}>
-      {messages.map((message, i) => {
-        const source = String.check(message.contents)
-        const mine = message.email === email
+    const listRef = useRef<HTMLDivElement>(null)
 
-        let component
-        if (message.messageType === "markdown") {
-          component = <ReactMarkdown source={source} renderers={renderers} />
-        } else if (message.messageType === "text") {
-          component = <>{source}</>
-        } else {
-          throw new Error(`Unsupport message type: ${message.messageType}`)
+    useImperativeHandle(ref, () => ({
+      scrollToBottom: () => {
+        if (listRef.current) {
+          listRef.current.scrollTop = listRef.current.scrollHeight
         }
+      },
+    }))
 
-        const timestamp = moment(message.timestamp)
-        const format = timestamp.isSame(now, "day")
-          ? "h:mm a"
-          : timestamp.isSame(now, "year")
-          ? "M/D h:mm a"
-          : "M/D/YYYY h:mm a"
-        const timestring = moment(message.timestamp).tz(tz).format(format)
+    const now = new Date()
+    return (
+      <div ref={listRef} className={classes.messages} {...props}>
+        {messages.map((message, i) => {
+          const source = String.check(message.contents)
+          const mine = message.email === email
 
-        return (
-          <div key={i} className={classes.message} style={{ flexDirection: mine ? "row-reverse" : "row" }}>
-            <Avatar
-              src={gravatar.url(message.email as string, gravatarOptions)}
-              style={{ marginLeft: mine ? 8 : 4, marginRight: 12 }}
-            />
-            <div style={{ flex: 1, textAlign: mine ? "right" : "left" }}>
-              {component}
-              <Typography
-                component="p"
-                variant="caption"
-                style={{ fontSize: "0.8em", marginTop: -8, color: theme.palette.text.disabled }}
-              >
-                {message.name} @ {timestring}
-              </Typography>
+          let component
+          if (message.messageType === "markdown") {
+            component = <ReactMarkdown source={source} renderers={renderers} />
+          } else if (message.messageType === "text") {
+            component = <>{source}</>
+          } else {
+            throw new Error(`Unsupport message type: ${message.messageType}`)
+          }
+
+          const timestamp = moment(message.timestamp)
+          const format = timestamp.isSame(now, "day")
+            ? "h:mm a"
+            : timestamp.isSame(now, "year")
+            ? "M/D h:mm a"
+            : "M/D/YYYY h:mm a"
+          const timestring = moment(message.timestamp).tz(tz).format(format)
+
+          return (
+            <div key={i} className={classes.message} style={{ flexDirection: mine ? "row-reverse" : "row" }}>
+              <Avatar
+                src={gravatar.url(message.email as string, gravatarOptions)}
+                style={{ marginLeft: mine ? 8 : 4, marginRight: 12 }}
+              />
+              <div style={{ flex: 1, textAlign: mine ? "right" : "left" }}>
+                {component}
+                <Typography
+                  component="p"
+                  variant="caption"
+                  style={{ fontSize: "0.8em", marginTop: -8, color: theme.palette.text.disabled }}
+                >
+                  {message.name} @ {timestring}
+                </Typography>
+              </div>
             </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+          )
+        })}
+      </div>
+    )
+  }
+)
 MarkdownMessages.propTypes = {
   email: PropTypes.string.isRequired,
   messages: PropTypes.array.isRequired,

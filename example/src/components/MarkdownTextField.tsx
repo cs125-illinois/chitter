@@ -1,4 +1,3 @@
-/* eslint-disable */
 import React, { useState, useCallback, useImperativeHandle, forwardRef, useRef, useEffect } from "react"
 import PropTypes from "prop-types"
 
@@ -27,6 +26,7 @@ export interface ChittererTextFieldProps {
   email: string | undefined
   gravatarOptions?: gravatar.Options
 }
+// eslint-disable-next-line react/display-name
 export const MarkdownTextField = forwardRef<{ clear: () => void }, TextFieldProps & ChittererTextFieldProps>(
   ({ onNewMessage, email, gravatarOptions, ...props }, ref) => {
     const classes = useStyles()

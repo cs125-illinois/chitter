@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useCallback, useRef } from "react"
 import PropTypes from "prop-types"
 
+import sortBy from "lodash/sortBy"
+import uniqBy from "lodash/uniqBy"
+
 // Note that we're already wrapped this component with a ChitterProvider in wrapRootElement.tsx
 // So all we need here is the context provider and a type
 import { RoomID, useChitter, JoinResponse, ChitterMessage } from "@cs125/chitter"
@@ -14,7 +17,7 @@ import makeStyles from "@material-ui/core/styles/makeStyles"
 import { LoginButton } from "@cs125/gatsby-theme-cs125/src/react-google-login"
 import { MarkdownMessages } from "./MarkdownMessages"
 import { MarkdownTextField } from "./MarkdownTextField"
-import moment from "moment"
+
 // Set up styles for the various parts of our little UI
 // makeStyles allows us to use the passed theme as needed, which we don't do here (yet)
 
@@ -71,6 +74,7 @@ export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
   const chitter = useRef<JoinResponse | undefined>()
   const waitingFor = useRef<string>()
   const inputRef = useRef<{ clear: () => void }>(null)
+  const messagesRef = useRef<{ scrollToBottom: () => void }>(null)
 
   const [joined, setJoined] = useState(false)
   const [messages, setMessages] = useState<ChitterMessage[]>([])
@@ -84,13 +88,15 @@ export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
         if (received.id === waitingFor.current) {
           inputRef.current?.clear()
         }
+        // There is an opportunity here to distribute other types of messages in other ways...
         if (received.messageType === "markdown" || received.messageType === "text") {
-          setMessages(messages =>
-            [...messages, received].sort((a, b) => moment(b.timestamp).valueOf() - moment(a.timestamp).valueOf())
-          )
+          setMessages(messages => sortBy(uniqBy([received, ...messages], "id"), ({ unixtime }) => -1 * unixtime))
         }
       }
-      const onJoin = (joined: boolean) => setJoined(joined)
+      const onJoin = (joined: boolean) => {
+        setJoined(joined)
+        chitter.current?.request(new Date(), 4)
+      }
       chitter.current = join({ room, onReceive, onJoin, sendOptions: { email, name } })
     }
     return () => chitter.current?.leave()
@@ -100,6 +106,7 @@ export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
     (contents: string) => {
       if (chitter.current && joined) {
         waitingFor.current = chitter.current.send("markdown", contents)
+        messagesRef.current?.scrollToBottom()
       }
     },
     [joined]
@@ -113,7 +120,12 @@ export const Chitterer: React.FC<ChittererProps> = ({ room, ...props }) => {
           <LoginButton />
         </div>
       ) : (
-        <MarkdownMessages messages={messages} email={email as string} gravatarOptions={gravatarOptions} />
+        <MarkdownMessages
+          ref={messagesRef}
+          messages={messages}
+          email={email as string}
+          gravatarOptions={gravatarOptions}
+        />
       )}
       <MarkdownTextField
         ref={inputRef}
