@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chitter-deployment
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chitter
+  template:
+    metadata:
+      labels:
+        app: chitter
+    spec:
+      containers:
+        - name: chitter
+          image: cs125/chitter:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8888
+          env:
+            - name: TZ
+              value: "America/Chicago"
+            - name: ENVIRONMENT
+              value: "production"
+            - name: VALID_DOMAINS
+              value: "https://cs125-illinois.github.io"
+            - name: CHITTER_ALLOWED_ROOMS
+              value: test
+            - name: MONGODB
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb
+                  key: MONGODB
+            - name: GOOGLE_CLIENT_IDS
+              valueFrom:
+                secretKeyRef:
+                  name: google
+                  key: GOOGLE_CLIENT_ID
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chitter-service
+  namespace: demo
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8888
+  selector:
+    app: chitter
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  namespace: demo
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/proxy-redirect-from: /
+    nginx.ingress.kubernetes.io/proxy-redirect-to: /demo/chitter/
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  name: chitter-ingress
+spec:
+  rules:
+    - host: cs125-cloud.cs.illinois.edu
+      http:
+        paths:
+          - path: /demo/chitter(/|$)(.*)
+            backend:
+              serviceName: chitter-service
+              servicePort: 80

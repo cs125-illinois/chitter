@@ -1,6 +1,7 @@
 import Koa from "koa"
 import Router from "koa-router"
 import bodyParser from "koa-bodyparser"
+import cors from "@koa/cors"
 import websocket from "koa-easy-ws"
 
 import moment from "moment"
@@ -28,6 +29,7 @@ import {
   ClientMessages,
   HistoryRequestMessage,
   JoinResponseMessageType,
+  ServerStatus,
 } from "../types"
 
 import { String, Array } from "runtypes"
@@ -42,11 +44,12 @@ if (DEVELOPMENT) {
 }
 
 const ALLOWED_ROOMS = Array(String).check(process.env.CHITTER_ALLOWED_ROOMS?.split(",") || [])
-if (ALLOWED_ROOMS.length === 0) {
+if (!DEVELOPMENT && ALLOWED_ROOMS.length === 0) {
   console.error("No rooms configured. Exiting.")
   process.exit(-1)
 }
-console.log(`Allowed rooms: ${ALLOWED_ROOMS.join(", ")}`)
+// Allow all rooms in development
+!DEVELOPMENT && console.log(`Allowed rooms: ${ALLOWED_ROOMS.join(", ")}`)
 
 // Set up Koa instance and router
 const app = new Koa()
@@ -59,10 +62,27 @@ const { database } = mongodbUri.parse(process.env.MONGODB as string)
 const client = mongo.connect(process.env.MONGODB as string, { useNewUrlParser: true, useUnifiedTopology: true })
 const chitterCollection = client.then((c) => c.db(database).collection(process.env.MONGODB_COLLECTION || "chitter"))
 
+const serverStatus: ServerStatus = ServerStatus.check({
+  started: new Date().toISOString(),
+  version: process.env.npm_package_version,
+  commit: process.env.GIT_COMMIT,
+  counts: {
+    client: 0,
+    send: 0,
+    request: 0,
+    join: 0,
+  },
+  googleClientIDs,
+})
+
 // We use a single event emitter to distribute messages between connected clients
 const messager = new EventEmitter()
 
 router.get("/", async (ctx) => {
+  if (!ctx.ws) {
+    ctx.body = serverStatus
+    return
+  }
   // Need to finalize the promise chain, but this is a no-op after the first connection
   const collection = await chitterCollection
 
@@ -98,6 +118,7 @@ router.get("/", async (ctx) => {
 
   const ws = PongWS(await ctx.ws())
   const roomListeners: Record<RoomID, (message: ChitterMessage) => void> = {}
+  serverStatus.counts.client++
 
   ws.addEventListener(
     "message",
@@ -110,7 +131,7 @@ router.get("/", async (ctx) => {
       }
       if (JoinRequestMessage.guard(request)) {
         const { id, room } = request
-        if (!ALLOWED_ROOMS.includes(room)) {
+        if (!DEVELOPMENT && !ALLOWED_ROOMS.includes(room)) {
           console.warn(`Not allowed to join room ${room}`)
           ws.send(JSON.stringify(JoinResponseMessage.check({ type: JoinResponseMessageType, id, room: undefined })))
           return
@@ -122,6 +143,7 @@ router.get("/", async (ctx) => {
         }
         const response = JoinResponseMessage.check({ type: JoinResponseMessageType, id, room })
         ws.send(JSON.stringify(response))
+        serverStatus.counts.join++
       } else if (ChitterMessageRequest.guard(request)) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { email, name, type, ...outgoing } = request
@@ -142,6 +164,7 @@ router.get("/", async (ctx) => {
         })
         // setTimeout(() => messager.emit(receivedMessage.room, receivedMessage), 8000)
         messager.emit(receivedMessage.room, receivedMessage)
+        serverStatus.counts.send++
 
         const savingMessage = SavedChitterMessage.check({ ...receivedMessage, _id: outgoing.id, client, versions })
         collection.insertOne({ ...savingMessage }).catch((err) => console.debug(err))
@@ -157,6 +180,7 @@ router.get("/", async (ctx) => {
           console.error("Invalid date in history request")
           return
         }
+        serverStatus.counts.request++
         // TODO: Check limit to make sure its appropriate
         const messages = await collection
           .find({ room, timestamp: { $lte: end.toDate() } })
@@ -176,7 +200,7 @@ router.get("/", async (ctx) => {
     try {
       ws.terminate()
     } catch (err) {}
-
+    serverStatus.counts.client--
     Object.keys(roomListeners).forEach((room) => {
       messager.removeListener(room, roomListeners[room])
     })
@@ -191,8 +215,25 @@ chitterCollection.then(async (c) => {
   // Update as needed
   await c.createIndex({ room: 1, timestamp: 1 })
 
+  const validDomains = process.env.VALID_DOMAINS && process.env.VALID_DOMAINS.split(",").map((s) => s.trim)
   const port = process.env.BACKEND_PORT ? parseInt(process.env.BACKEND_PORT) : 8888
-  app.use(bodyParser()).use(websocket()).use(router.routes()).use(router.allowedMethods()).listen(port)
+
+  app
+    .use(
+      cors({
+        origin: (ctx) => {
+          if (validDomains && validDomains.includes(ctx.headers.origin)) {
+            return false
+          }
+          return ctx.headers.origin
+        },
+      })
+    )
+    .use(bodyParser())
+    .use(websocket())
+    .use(router.routes())
+    .use(router.allowedMethods())
+    .listen(port)
 })
 
 process.on("uncaughtException", (err) => {

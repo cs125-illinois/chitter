@@ -1,4 +1,4 @@
-import { Record, Static, String, Literal, Union, InstanceOf, Unknown, Number, Boolean, Partial } from "runtypes"
+import { Record, Static, String, Literal, Union, InstanceOf, Unknown, Number, Boolean, Partial, Array } from "runtypes"
 
 // Anything that goes over the wire should be typed here.
 // These type definitions are shared by the client and the server, since one end will
@@ -131,3 +131,17 @@ export type HistoryResponseMessage = Static<typeof HistoryResponseMessage>
 export const ClientMessages = Union(ChitterMessageRequest, JoinRequestMessage, HistoryRequestMessage)
 // All messages that can be sent by the server
 export const ServerMessages = Union(ChitterMessage, JoinResponseMessage, HistoryResponseMessage)
+
+export const ServerStatus = Record({
+  started: String.withConstraint((s) => Date.parse(s) !== NaN),
+  version: String,
+  commit: String,
+  counts: Record({
+    client: Number,
+    send: Number,
+    request: Number,
+    join: Number,
+  }),
+  googleClientIDs: Array(String),
+})
+export type ServerStatus = Static<typeof ServerStatus>
