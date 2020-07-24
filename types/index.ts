@@ -68,6 +68,7 @@ export const ChitterMessage = ChitterContents.And(
     type: Literal(ChitterMessageType),
     new: Boolean,
     timestamp: Union(String, InstanceOf(Date)),
+    unixtime: Number,
     email: String,
     name: String,
   })
