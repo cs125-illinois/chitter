@@ -58,7 +58,7 @@
     "@types/koa-bodyparser": "^4.3.0",
     "@types/koa-router": "^7.4.1",
     "@types/mongodb": "^3.5.25",
-    "@types/node": "14.0.24",
+    "@types/node": "14.0.25",
     "@types/react": "^16.9.43",
     "@types/react-dom": "^16.9.8",
     "@types/react-syntax-highlighter": "^11.0.4",
@@ -86,7 +86,7 @@
     "prettier-package-json": "^2.1.3",
     "prop-types": "^15.7.2",
     "react": "^16.13.1",
-    "rollup": "^2.22.2",
+    "rollup": "^2.23.0",
     "rollup-plugin-commonjs": "^10.1.0",
     "rollup-plugin-node-resolve": "^5.2.0",
     "rollup-plugin-typescript2": "^0.27.1",
@@ -110,7 +110,7 @@
     ".*.js": [
       "prettier --write"
     ],
-    "{src,example,server,types}/**/*.ts?(x)": [
+    "{client,example,server,types}/**/*.ts?(x)": [
       "prettier --write",
       "eslint --fix",
       "bash -c \"tsc --noEmit\"",
