@@ -41,6 +41,13 @@ if (DEVELOPMENT) {
   console.warn("Warning: running Chitter in development mode")
 }
 
+const ALLOWED_ROOMS = Array(String).check(process.env.CHITTER_ALLOWED_ROOMS?.split(",") || [])
+if (ALLOWED_ROOMS.length === 0) {
+  console.error("No rooms configured. Exiting.")
+  process.exit(-1)
+}
+console.log(`Allowed rooms: ${ALLOWED_ROOMS.join(", ")}`)
+
 // Set up Koa instance and router
 const app = new Koa()
 const router = new Router<Record<string, unknown>, { ws: () => Promise<WebSocket> }>()
@@ -103,6 +110,11 @@ router.get("/", async (ctx) => {
       }
       if (JoinRequestMessage.guard(request)) {
         const { id, room } = request
+        if (!ALLOWED_ROOMS.includes(room)) {
+          console.warn(`Not allowed to join room ${room}`)
+          ws.send(JSON.stringify(JoinResponseMessage.check({ type: JoinResponseMessageType, id, room: undefined })))
+          return
+        }
         if (!roomListeners[room]) {
           const listener = (message: ChitterMessage) => ws.send(JSON.stringify(message))
           messager.addListener(room, listener)
