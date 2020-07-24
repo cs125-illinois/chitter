@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { createContext, useContext, ReactNode, useRef, useEffect, useState, useCallback } from "react"
-import PropTypes, { string } from "prop-types"
+import PropTypes from "prop-types"
 
 import ReconnectingWebSocket from "reconnecting-websocket"
 import { PingWS, filterPingPongMessages } from "@cs125/pingpongws"
@@ -115,8 +115,8 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, google
             return
           }
           const succeeded = room !== false
-          request.onJoin(succeeded, succeeded ? undefined : new Error("Join request rejected"))
           request.status = succeeded
+          request.onJoin(succeeded, succeeded ? undefined : new Error("Join request rejected"))
           succeeded && messager.current.addListener(room as string, request.onReceive)
         }
       })
