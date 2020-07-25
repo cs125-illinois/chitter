@@ -6,7 +6,7 @@
   "homepage": "https://github.com/cs125-illinois/chitter",
   "repository": "https://github.com/cs125-illinois/chitter",
   "bugs": "https://github.com/cs125-illinois/chitter/issues",
-  "version": "2020.7.4",
+  "version": "2020.7.5",
   "main": "client/dist/index.cjs.js",
   "module": "client/dist/index.es.js",
   "files": [
