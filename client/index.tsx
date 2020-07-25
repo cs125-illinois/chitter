@@ -22,6 +22,7 @@ import {
   ChitterMessageRequestType,
   ChitterMessageRequest,
   ChitterMessage,
+  ChitterMessageType,
 } from "../types"
 
 import { String } from "runtypes"
@@ -200,4 +201,4 @@ export const ChitterContext = createContext<ChitterContext>({
   },
 })
 
-export { ChitterMessageRequest as ChitterMessage }
+export { ChitterMessage, ChitterMessageRequest, ChitterMessageType }

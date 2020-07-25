@@ -32,7 +32,7 @@ import {
   ServerStatus,
 } from "../types"
 
-import { String, Array } from "runtypes"
+import { String, Array, Number } from "runtypes"
 const VERSIONS = {
   commit: String.check(process.env.GIT_COMMIT),
   server: String.check(process.env.npm_package_version),
@@ -50,6 +50,10 @@ if (!DEVELOPMENT && allowedRooms.length === 0) {
 }
 // Allow all rooms in development
 !DEVELOPMENT && console.log(`Allowed rooms: ${allowedRooms.join(", ")}`)
+
+// Simulate delay when requested
+const fakeDelay =
+  !DEVELOPMENT || !process.env.CHITTER_FAKE_DELAY ? 0 : Number.check(parseInt(process.env.CHITTER_FAKE_DELAY))
 
 const validDomains = process.env.VALID_DOMAINS && process.env.VALID_DOMAINS.split(",").map((s) => s.trim())
 const port = process.env.BACKEND_PORT ? parseInt(process.env.BACKEND_PORT) : 8888
@@ -171,8 +175,11 @@ router.get("/", async (ctx) => {
           timestamp: now,
           unixtime: now.valueOf(),
         })
-        // setTimeout(() => messager.emit(receivedMessage.room, receivedMessage), 8000)
-        messager.emit(receivedMessage.room, receivedMessage)
+        if (DEVELOPMENT && fakeDelay > 0) {
+          setTimeout(() => messager.emit(receivedMessage.room, receivedMessage), fakeDelay)
+        } else {
+          messager.emit(receivedMessage.room, receivedMessage)
+        }
         serverStatus.counts.send++
 
         const savingMessage = SavedChitterMessage.check({ ...receivedMessage, _id: outgoing.id, client, versions })

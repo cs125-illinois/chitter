@@ -1,2 +1,12 @@
-export { ChitterContext, ChitterProvider, ChitterProviderProps, useChitter, JoinRequest, JoinResponse } from "./client"
-export { RoomID, ChitterMessage, ChitterMessageType, ChitterMessageRequest } from "./types"
+export {
+  ChitterContext,
+  ChitterProvider,
+  ChitterProviderProps,
+  useChitter,
+  JoinRequest,
+  JoinResponse,
+  ChitterMessage,
+  ChitterMessageType,
+  ChitterMessageRequest,
+} from "./client"
+export { RoomID } from "./types"
