@@ -38,7 +38,7 @@ export type JoinRequest = {
   sendOptions?: SendOptions
 }
 
-export type SendChitterMessage = (type: string, contents: unknown) => string | undefined
+export type SendChitterMessage = (type: string, contents: unknown) => ChitterMessageRequest | undefined
 export type RequestChitterMessages = (end: Date, count: number) => void
 export type JoinResponse = {
   send: SendChitterMessage
@@ -135,7 +135,7 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, google
     const { room, sendOptions } = request
     connection.current?.send(JSON.stringify(JoinRequestMessage.check({ type: JoinRequestMessageType, id: view, room })))
 
-    const send = (type: string, contents: unknown): string | undefined => {
+    const send = (type: string, contents: unknown): ChitterMessageRequest | undefined => {
       if (joinRequests.current[view].status !== true) {
         console.error("Can't send messages to room before joining")
         return undefined
@@ -151,7 +151,7 @@ export const ChitterProvider: React.FC<ChitterProviderProps> = ({ server, google
         ...sendOptions,
       })
       connection.current?.send(JSON.stringify(message))
-      return id
+      return message
     }
     const requestMessages = (end: Date, count: number) => {
       if (joinRequests.current[view].status !== true) {
